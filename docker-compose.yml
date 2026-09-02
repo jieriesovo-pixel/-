@@ -1,0 +1,56 @@
+version: "3.9"
+services:
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://clouddrive:clouddrive@postgres:5432/clouddrive
+      - REDIS_URL=redis://redis:6379/0
+      - ES_URL=http://elasticsearch:9200
+      - STORAGE_BACKEND=local
+      - STORAGE_LOCAL_PATH=/data/storage
+    volumes: [storage_data:/data/storage]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+    restart: unless-stopped
+  frontend:
+    build: ./frontend
+    ports: ["3000:80"]
+    depends_on: [backend]
+    restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: clouddrive
+      POSTGRES_PASSWORD: clouddrive
+      POSTGRES_DB: clouddrive
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clouddrive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports: ["5432:5432"]
+  redis:
+    image: redis:7-alpine
+    volumes: [redis_data:/data]
+    ports: ["6379:6379"]
+  elasticsearch:
+    image: elasticsearch:8.13.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes: [es_data:/usr/share/elasticsearch/data]
+    ports: ["9200:9200"]
+  nginx:
+    image: nginx:alpine
+    ports: ["80:80"]
+    volumes: ["./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"]
+    depends_on: [backend, frontend]
+volumes:
+  postgres_data:
+  redis_data:
+  es_data:
+  storage_data:
